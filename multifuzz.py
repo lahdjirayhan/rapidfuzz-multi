@@ -27,15 +27,15 @@ class Database:
         return obj
     
 
-    def _ensure_record_columns(self, record: pd.DataFrame) -> pd.DataFrame:
+    def _ensure_columns(self, record: pd.DataFrame) -> pd.DataFrame:
         if not any([x in self.columns for x in record]):
             raise ValueError('Record does not contain any columns in database')
         
         return record
 
     
-    def _ensure_scorer(self, scorer: Dict[str, Callable], record: pd.DataFrame) -> Dict[str, Callable]:
-        for k, v in scorer:
+    def _ensure_scorers(self, scorers: Dict[str, Callable], record: pd.DataFrame) -> Dict[str, Callable]:
+        for k, v in scorers:
             if not callable(v):
                 raise TypeError(f'Scorer for field {k} is not a callable')
             if k not in self.columns:
@@ -43,7 +43,7 @@ class Database:
             if k not in record:
                 raise ValueError(f'Column {k} does not exist in record, yet a scorer for it is defined')
         
-        return scorer
+        return scorers
 
 
     def _column_match(self, field, column, scorer: Optional[Callable] = None) -> List[float]:
@@ -66,8 +66,8 @@ class Database:
                                 summary_method: str = 'geom_mean',
                                 weights: Optional[List[float]] = None) -> pd.DataFrame:
         # Perform checks
-        record = self._ensure_record_columns(record)
-        scorer = self._ensure_scorer(scorers, record)
+        record = self._ensure_columns(record)
+        scorer = self._ensure_scorers(scorers, record)
 
         # Column-wise match score
         result = pd.DataFrame([])
