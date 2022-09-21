@@ -18,11 +18,13 @@ class Database:
         def default_preproc(x):
             return str(x).lower()
         
+        result = pd.DataFrame([])
+
         for col in df:
             preproc = self.preprocessors.get(col, default_preproc)
-            df[col] = df[col].apply(lambda x: preproc(x))
+            result[col] = [preproc(x) for x in df[col]]
         
-        return df
+        return result
     
 
     def _ensure_preprocessors(self, preps: Dict[str, Callable]) -> Dict[str, Callable]:
@@ -105,9 +107,6 @@ class Database:
         return result
     
 
-    # FIXME, NOTE, TODO:
-    # So far, this method only gives out n_matches relevant records.
-    # This is already helpful because it gives context, but still feels wonky wobbly somehow.
     def find_match(self, record: pd.DataFrame, n_matches: int = 5) -> pd.DataFrame:
         # Dirty trick because I don't support multiple records
         if len(record) > 1:
@@ -118,8 +117,18 @@ class Database:
 
 
         result = pd.concat([
+            scores,
             self.database.copy(), # Inefficient
-            scores
         ], axis=1).sort_values('score_overall', ascending=False).iloc[:n_matches, :]
         
+        result = result.rename(columns={k: f"db_{k}" for k in record.columns})
+
+        record = record.copy().rename(columns={k: f"rec_{k}" for k in record.columns})
+        record = pd.concat([record]*len(result), ignore_index=True)
+
+        result = pd.concat([
+            record.reset_index(drop=True),
+            result.reset_index()
+        ], axis=1)
+
         return result
