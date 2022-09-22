@@ -11,21 +11,28 @@ class Database:
 
         # Set and perform preprocessing
         self.preprocessors = self._ensure_preprocessors(preprocessors)
-        self.database = self._preprocess_columns(database)
-    
+        self.database = self._preprocess_dataframe(database)
 
-    def _preprocess_columns(self, df: pd.DataFrame) -> None:
-        def default_preproc(x):
-            return str(x).lower()
-        
+
+    def _preprocess_dataframe(self, df: pd.DataFrame) -> pd.DataFrame:        
         result = pd.DataFrame([])
 
         for col in df:
-            preproc = self.preprocessors.get(col, default_preproc)
+            preproc = self.preprocessors.get(col, lambda x: str(x).lower())
             result[col] = [preproc(x) for x in df[col]]
         
         return result
     
+
+    def _preprocess_record(self, record: Dict[str, str]) -> Dict[str, str]:
+        result = {}
+
+        for col, val in record.items():
+            preproc = self.preprocessors.get(col, lambda x: str(x).lower())
+            result[col] = preproc(val)
+
+        return result
+
 
     def _ensure_preprocessors(self, preps: Dict[str, Callable]) -> Dict[str, Callable]:
         for k, v in preps.items():
@@ -35,6 +42,7 @@ class Database:
                 raise ValueError(f'Column {k} does not exist in database, yet a preprocessor for it is defined')
         
         return preps
+
 
     def _ensure_dataframe(self, obj) -> pd.DataFrame:
         if not isinstance(obj, pd.DataFrame):
@@ -62,6 +70,13 @@ class Database:
         return scorers
 
 
+    def _ensure_single_record(self, record) -> Dict[str, str]:
+        if not isinstance(record, dict):
+            raise TypeError('Single record must be supplied in dict format')
+        
+        return record
+
+
     def _column_match(self, field, column, scorer: Optional[Callable] = None) -> List[float]:
         # NOTE: field shall be single unit, not multiple at once
         if scorer is None:
@@ -77,7 +92,7 @@ class Database:
 
     
     def calculate_overall_score(self,
-                                record: pd.DataFrame,
+                                record: Dict[str, str],
                                 scorers: Dict[str, Callable] = {},
                                 summary_method: str = 'geom_mean',
                                 weights: Optional[List[float]] = None) -> pd.DataFrame:
@@ -86,13 +101,13 @@ class Database:
         scorer = self._ensure_scorers(scorers, record)
 
         # Preprocess
-        record = self._preprocess_columns(record)
+        record = self._preprocess_record(record)
 
         # Column-wise match score
         result = pd.DataFrame([])
         for col in record:
             if col in self.columns:
-                result[col] = self._column_match(col, record.at[0, col], scorer.get(col))
+                result[col] = self._column_match(col, record[col], scorer.get(col))
         
         # Summarize into overall score
         if summary_method == 'geom_mean':
@@ -107,11 +122,7 @@ class Database:
         return result
     
 
-    def find_match(self, record: pd.DataFrame, n_matches: int = 5) -> pd.DataFrame:
-        # Dirty trick because I don't support multiple records
-        if len(record) > 1:
-            raise ValueError('Please supply dataframe of length one as record')
-        
+    def find_match(self, record: Dict[str, str], n_matches: int = 5) -> pd.DataFrame:
         scores = self.calculate_overall_score(record)
         scores.columns = [f'score_{x}' for x in scores.columns]
 
@@ -121,13 +132,16 @@ class Database:
             self.database.copy(), # Inefficient
         ], axis=1).sort_values('score_overall', ascending=False).iloc[:n_matches, :]
         
-        result = result.rename(columns={k: f"db_{k}" for k in record.columns})
-
-        record = record.copy().rename(columns={k: f"rec_{k}" for k in record.columns})
-        record = pd.concat([record]*len(result), ignore_index=True)
+        result = result.rename(columns={k: f"db_{k}" for k in record})
+        
+        # List [v] is used instead of scalar v, to avoid this:
+        # Exception has occurred: ValueError
+        # If using all scalar values, you must pass an index
+        record_ = pd.DataFrame({f"rec_{k}": [v] for k, v in record.items()})
+        record_ = pd.concat([record_]*len(result), ignore_index=True).reset_index(drop=True)
 
         result = pd.concat([
-            record.reset_index(drop=True),
+            record_,
             result.reset_index()
         ], axis=1)
 
