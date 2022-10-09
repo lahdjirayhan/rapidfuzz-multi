@@ -98,7 +98,7 @@ class Database:
                                 weights: Optional[List[float]] = None) -> pd.DataFrame:
         # Perform checks
         record = self._ensure_columns(record)
-        scorer = self._ensure_scorers(scorers, record)
+        scorers = self._ensure_scorers(scorers, record)
 
         # Preprocess
         record = self._preprocess_record(record)
@@ -107,7 +107,7 @@ class Database:
         result = pd.DataFrame([])
         for col in record:
             if col in self.columns:
-                result[col] = self._column_match(col, record[col], scorer.get(col))
+                result[col] = self._column_match(col, record[col], scorers.get(col))
         
         # Summarize into overall score
         if summary_method == 'geom_mean':
@@ -122,8 +122,10 @@ class Database:
         return result
     
 
-    def find_match(self, record: Dict[str, str], n_match: int = 1) -> pd.DataFrame:
-        scores = self.calculate_overall_score(record)
+    def find_match(self, record: Dict[str, str], *,
+                         scorers: Dict[str, Callable] = {},
+                         n_match: int = 1) -> pd.DataFrame:
+        scores = self.calculate_overall_score(record, scorers)
         scores.columns = [f'score_{x}' for x in scores.columns]
 
 
