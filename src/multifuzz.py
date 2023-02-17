@@ -122,7 +122,7 @@ class Database:
         return result
     
 
-    def find_match(self, record: Dict[str, str], n_matches: int = 5) -> pd.DataFrame:
+    def find_match(self, record: Dict[str, str], n_match: int = 1) -> pd.DataFrame:
         scores = self.calculate_overall_score(record)
         scores.columns = [f'score_{x}' for x in scores.columns]
 
@@ -130,7 +130,7 @@ class Database:
         result = pd.concat([
             scores,
             self.database.copy(), # Inefficient
-        ], axis=1).sort_values('score_overall', ascending=False).iloc[:n_matches, :]
+        ], axis=1).sort_values('score_overall', ascending=False).iloc[:n_match, :]
         
         result = result.rename(columns={k: f"db_{k}" for k in record})
         
