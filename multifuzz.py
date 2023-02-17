@@ -4,21 +4,35 @@ import pandas as pd
 from rapidfuzz import fuzz, process
 
 class Database:
-    def __init__(self, database: pd.DataFrame, preprocessors: Dict[str, Callable]) -> None:
-        database = self._ensure_dataframe(database)
-        database = self._preprocess_database_columns(database)
-        
-        self.database = database
-        self.columns = self.database.columns.tolist()
+    def __init__(self, database: pd.DataFrame, preprocessors: Dict[str, Callable] = {}) -> None:
+        # Set database and define column names
+        self._ensure_dataframe(database)
+        self.columns = database.columns.tolist()
 
+        # Set and perform preprocessing
+        self.preprocessors = self._ensure_preprocessors(preprocessors)
+        self.database = self._preprocess_columns(database)
     
-    def _preprocess_database_columns(self, database: pd.DataFrame) -> pd.DataFrame:
-        # FIXME: Every column is preprocessed the same way, need a way to customize
-        for col in database:
-            database[col] = database[col].apply(lambda x: str(x).lower())
+
+    def _preprocess_columns(self, df: pd.DataFrame) -> None:
+        def default_preproc(x):
+            return str(x).lower()
         
-        return database
+        for col in df:
+            preproc = self.preprocessors.get(col, default_preproc)
+            df[col] = df[col].apply(lambda x: preproc(x))
+        
+        return df
     
+
+    def _ensure_preprocessors(self, preps: Dict[str, Callable]) -> Dict[str, Callable]:
+        for k, v in preps.items():
+            if not callable(v):
+                raise TypeError(f'Preprocessor for field {k} is not a callable')
+            if k not in self.columns:
+                raise ValueError(f'Column {k} does not exist in database, yet a preprocessor for it is defined')
+        
+        return preps
 
     def _ensure_dataframe(self, obj) -> pd.DataFrame:
         if not isinstance(obj, pd.DataFrame):
@@ -35,7 +49,7 @@ class Database:
 
     
     def _ensure_scorers(self, scorers: Dict[str, Callable], record: pd.DataFrame) -> Dict[str, Callable]:
-        for k, v in scorers:
+        for k, v in scorers.items():
             if not callable(v):
                 raise TypeError(f'Scorer for field {k} is not a callable')
             if k not in self.columns:
@@ -68,6 +82,9 @@ class Database:
         # Perform checks
         record = self._ensure_columns(record)
         scorer = self._ensure_scorers(scorers, record)
+
+        # Preprocess
+        record = self._preprocess_columns(record)
 
         # Column-wise match score
         result = pd.DataFrame([])
